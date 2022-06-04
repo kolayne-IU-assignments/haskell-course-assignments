@@ -1,5 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wall -fno-warn-type-defaults #-}
+
+{-
+    PLAYER'S GUIDE
+    - Use WASD to move
+    - You can walk on floor (yellow squares) or through open doors (solid circles on yellow background)
+    - You can not walk on wall (black squares) or through closed doors (solid circles on black background)
+    - You can change states of the doors by stepping on a button (thick circle on yellow background)
+    - Button is activated automatically when you step on it. To activate it again you can jump (space)
+    - Try to get to the exit (white square)
+-}
+
 import CodeWorld
 
 type DoorIsOpen = Bool
@@ -198,6 +209,32 @@ worldUpdater (KeyPress "E") = useButton
 worldUpdater (KeyPress " ") = useButton
 worldUpdater _ = id
 
+type ActivityOf world
+  = world
+  -> (Event -> world -> world)
+  -> (world -> Picture)
+  -> IO ()
+
+withReset :: ActivityOf world -> ActivityOf world
+-- withReset :: ActivityOf world -> world -> (Event -> world -> world) -> (world -> Picture) -> IO ()
+withReset activityMaker initial processEvent render
+  = activityMaker initial processEvent' render
+  where
+    processEvent' (KeyPress "Esc") _ = initial
+    processEvent' event state = processEvent event state
+
+data GameStateOrSplashScreen state = GameState state | SplashScreen
+
+withStartScreen :: ActivityOf (GameStateOrSplashScreen world) -> ActivityOf world
+withStartScreen activityMaker initialGameState processEvent render
+  = activityMaker SplashScreen processEvent' render'
+  where
+    processEvent' (KeyPress " ") SplashScreen = GameState initialGameState
+    processEvent' _ SplashScreen = SplashScreen
+    processEvent' event (GameState state) = GameState (processEvent event state)
+    
+    render' SplashScreen = lettering "This is a splash screen! Press space to start"
+    render' (GameState state) = render state
+
 main :: IO ()
-main = activityOf initialWorld worldUpdater (\w -> renderWorld w (-11, -11) (11, 11))
---main = drawingOf $ renderWorld (invertDoors pink $ invertDoors green initialWorld) (-11, -11) (11, 11)
+main = withStartScreen (withReset activityOf) initialWorld worldUpdater (\w -> renderWorld w (-11, -11) (11, 11))
