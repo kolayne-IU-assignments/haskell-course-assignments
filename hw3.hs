@@ -89,12 +89,38 @@ drawMode Idle = modePartUp <> modePartDown <> modeBase
 drawMode GoingUp = colored red modePartUp <> modePartDown <> modeBase
 drawMode GoingDown = modePartUp <> colored red modePartDown <> modeBase
 
+-- | Interactive finite state machine simulation.
+interactiveFSM
+  :: s                  -- ˆ Initial state.
+  -> (a -> a -> Bool)   -- ˆ Action equality test.
+  -> (s -> [(a, s)])    -- ˆ State transitions.
+  -> (Event -> Maybe a) -- ˆ How to convert events into actions.
+  -> (s -> Picture)     -- ˆ How to draw states.
+  -> (a -> Picture)     -- ˆ How to draw actions.
+  -> IO ()
+interactiveFSM initS actionEq transitFunc event2Act pictureState pictureAct
+  = activityOf initS eventProcessor drawer
+  where
+    eventProcessor event state
+      = applyAction (event2Act event) actionEq transitFunc state
+    
+    drawer s = asSpaced 4 id ((pictureState s):(Prelude.map (pictureAct . fst) $ transitFunc s))
+
+
 main :: IO ()
+main = interactiveFSM Idle buttonEq elevator elevatorEventer drawMode drawButton
+  where
+    elevatorEventer (KeyPress "Up") = Just Up
+    elevatorEventer (KeyPress "Down") = Just Down
+    elevatorEventer (KeyPress " ") = Just Stop
+    elevatorEventer _ = Nothing
+-- main = drawingOf $ asSpaced 3.5 id [drawButton Up, drawButton Down, drawButton Stop]
+-- main = drawingOf $ drawMode GoingDown
+{-
 main = activityOf Idle eventProcessor drawMode
   where
     eventProcessor (KeyPress "Up") mode = applyAction (Just Up) buttonEq elevator mode
     eventProcessor (KeyPress "Down") mode = applyAction (Just Down) buttonEq elevator mode
     eventProcessor (KeyPress " ") mode = applyAction (Just Stop) buttonEq elevator mode
     eventProcessor _ x = x
--- main = drawingOf $ asSpaced 3.5 id [drawButton Up, drawButton Down, drawButton Stop]
--- main = drawingOf $ drawMode GoingDown
+-}
