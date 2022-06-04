@@ -106,21 +106,52 @@ interactiveFSM initS actionEq transitFunc event2Act pictureState pictureAct
     
     drawer s = asSpaced 4 id ((pictureState s):(Prelude.map (pictureAct . fst) $ transitFunc s))
 
+interactiveSystem
+  :: s                                  -- ˆ Initial state of a FSM.
+  -> (a -> a -> Bool)                   -- ˆ FSM action equality test.
+  -> (s -> [(a, s)])                    -- ˆ FSM State transitions.
+  -> (Event -> Maybe a)                 -- ˆ How to convert events into actions.
+  -> (s -> Picture)                     -- ˆ How to draw states.
+  -> (a -> Picture)                     -- ˆ How to draw actions.
+  -> system                             -- ˆ System state, whose modes are
+                                        -- modelled with FSM.
+  -> (Double -> s -> system -> system)  -- ˆ How system evolves with time.
+  -> (system -> Picture)                -- ˆ How to render system.
+  -> IO ()
+interactiveSystem initS actionEq transitFunc event2Act pictureState pictureAct
+    initSys evolveSys pictureSys
+  = activityOf (initS, initSys) eventProcessor drawer
+  where
+    eventProcessor event (state, sys)
+      = (applyAction (event2Act event) actionEq transitFunc state, tryEvolve event state sys)
+    
+    tryEvolve (TimePassing dt) state sys = evolveSys dt state sys
+    tryEvolve _ _ sys = sys
+    
+    drawer (st, sys) = asSpaced 4 id ((pictureSys sys):(pictureState st):(Prelude.map (pictureAct . fst) $ transitFunc st))
+
+-- | Elevator system state: the current height
+type ElevatorSystem = Double
+
+initialSystem :: ElevatorSystem
+initialSystem = 0
+
+drawSystem :: ElevatorSystem -> Picture
+drawSystem height = translated 0 height $ rectangle 1 2 <> lettering "\x1F6B6"
+
+elevatorVelocity :: Double
+elevatorVelocity = 1
+
+evolveSystem :: Double -> Mode -> ElevatorSystem -> ElevatorSystem
+evolveSystem _dt Idle height = height
+evolveSystem dt GoingUp height = height + dt * elevatorVelocity
+evolveSystem dt GoingDown height = height - dt * elevatorVelocity
 
 main :: IO ()
-main = interactiveFSM Idle buttonEq elevator elevatorEventer drawMode drawButton
+main = interactiveSystem Idle buttonEq elevator elevatorEventer drawMode
+  drawButton initialSystem evolveSystem drawSystem
   where
     elevatorEventer (KeyPress "Up") = Just Up
     elevatorEventer (KeyPress "Down") = Just Down
     elevatorEventer (KeyPress " ") = Just Stop
     elevatorEventer _ = Nothing
--- main = drawingOf $ asSpaced 3.5 id [drawButton Up, drawButton Down, drawButton Stop]
--- main = drawingOf $ drawMode GoingDown
-{-
-main = activityOf Idle eventProcessor drawMode
-  where
-    eventProcessor (KeyPress "Up") mode = applyAction (Just Up) buttonEq elevator mode
-    eventProcessor (KeyPress "Down") mode = applyAction (Just Down) buttonEq elevator mode
-    eventProcessor (KeyPress " ") mode = applyAction (Just Stop) buttonEq elevator mode
-    eventProcessor _ x = x
--}
