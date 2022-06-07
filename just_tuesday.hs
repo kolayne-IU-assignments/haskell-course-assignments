@@ -21,37 +21,60 @@ remove n (x:xs) = (x:left, removed)
         where
                 (left, removed) = remove (n-1) xs
 
+data Command
+    = Exit
+    | ShowTasks
+    | RemoveTask Integer
+    | AddTask Task
+
+type State = [Task]
+
+handleCommand :: Command -> State -> IO (Maybe State)
+handleCommand Exit _ = return Nothing
+handleCommand ShowTasks tasks = do
+    printAllTasks tasks
+    return $ Just tasks
+handleCommand (AddTask newTask) tasks = do
+    return $ Just (newTask : tasks)
+handleCommand (RemoveTask taskIndex) tasks
+    = return $ Just $ fst $ remove taskIndex tasks
+
+getCommand :: IO (Maybe Command)
+getCommand = do
+    input <- getLine
+    case input of
+        "/exit" -> return $ Just Exit
+        "/show" -> return $ Just ShowTasks
+        "/done" -> do
+            indexStr <- getLine
+            case readMaybe indexStr of
+                Nothing -> do
+                    putStrLn "ERROR: invalid index"
+                    return Nothing
+                Just i -> return $ Just $ RemoveTask i
+        "/add" -> do
+            taskName <- getLine
+            return $ Just $ AddTask taskName
+        _ -> return Nothing
+
 -- | Default entry point.
 main :: IO ()
 main = runWith ["buy milk", "grade hw"]
 
 runWith :: [Task] -> IO ()
 runWith tasks = do
-    --putStrLn "Hello, world"
-    input <- getLine
-    case input of
-        "/exit" -> do
-            putStrLn "Bye!"
-        "/show" -> do
-            printAllTasks tasks
-            runWith tasks
-        "/add" -> do
-            taskStr <- getLine
-            runWith (taskStr:tasks)
-        "/done" -> do
-            indexStr <- getLine
-            case readMaybe indexStr of
+    putStrLn "command> "
+
+    command <- getCommand
+
+    newTasks <-
+            case command of
                 Nothing -> do
-                    putStrLn "ERROR: invalid index"
-                    runWith tasks
-                Just i -> do
-                    let (leftTasks, mbRemovedTask) = remove i tasks
-                    case mbRemovedTask of
-                        Nothing -> do
-                            putStrLn "ERROR: no task with such index"
-                        Just removedTask -> do
-                                putStrLn ("Removed task " ++ removedTask)
-                    runWith leftTasks
-        _ -> do
-            putStrLn ("You said: " ++ input)
-            runWith tasks
+                    putStrLn "ERROR: unrecognized command"
+                    return $ Just tasks
+                Just command' -> do
+                    handleCommand command' tasks
+
+    case newTasks of
+        Nothing -> putStrLn "Bye!"
+        Just newTasks' -> runWith newTasks'
