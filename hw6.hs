@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveFunctor #-}
+{-# OPTIONS_GHC -Wall -fno-warn-type-defaults #-}
 
 import Data.List (transpose)
 
