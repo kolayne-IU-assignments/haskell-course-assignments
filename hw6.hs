@@ -21,12 +21,12 @@ instance Num (Expr a) where
 -- | (in case there is no value in associative list).
 evalWith :: Eq var => Integer -> [(var, Integer)] -> Expr var -> Integer
 evalWith _ _ (Lit n) = n
-evalWith d vs (Add e1 e2) = evalWith d vs e1 + evalWith d vs e2
-evalWith d vs (Mul e1 e2) = evalWith d vs e1 * evalWith d vs e2
+evalWith d vars (Add e1 e2) = evalWith d vars e1 + evalWith d vars e2
+evalWith d vars (Mul e1 e2) = evalWith d vars e1 * evalWith d vars e2
 evalWith default_ vars (Var var) =
     case lookup var vars of
          Nothing -> default_
-         (Just x) -> x
+         Just x -> x
 
 -- | Display an expression using a given
 -- | display function for variables
@@ -48,6 +48,31 @@ eval = evalWith default_ allIntsPaired
 display :: Expr String -> String
 display = displayWith id
 
+defaultLookup :: Eq a => b -> [(a, b)] -> a -> b
+defaultLookup default_ keyValues key =
+    case lookup key keyValues of
+         Nothing -> default_
+         Just x -> x
+
+-- | Replace variables with expressions of other variables
+expandVars :: Eq a => Expr b -> [(a, Expr b)] -> Expr a -> Expr b
+expandVars default_ repls expr = expand (fmap (defaultLookup default_ repls) expr)
+    where
+        expand :: Expr (Expr a) -> Expr a
+        expand (Lit n) = Lit n
+        expand (Add a b) = Add (expand a) (expand b)
+        expand (Mul a b) = Mul (expand a) (expand b)
+        expand (Var e) = e
+{-
+expandVars _ _ (Lit n) = Lit n
+expandVars d repls (Add e1 e2) = Add (expandVars d repls e1) (expandVars d repls e2)
+expandVars d repls (Mul e1 e2) = Mul (expandVars d repls e1) (expandVars d repls e2)
+expandVars default_ repls (Var v) =
+    case lookup v repls of
+         Nothing -> default_
+         Just e -> e
+-}
+
 sampleExpr1 :: Expr String
 sampleExpr1 = Add (Lit 1) (Mul (Var "x") (Var "width"))
 
@@ -63,3 +88,12 @@ main = do
     let x = Var "x"; y = Var "y"; z = Var "z"
     print $ evalWith 0 vars (x + y)
     print $ evalWith 0 vars ((x + y)^2 + z)
+
+    let unknown = Var "<unknown>"
+    let vars = [("x", y + z), ("y", x + 3)]
+    print $ display $ expandVars unknown vars (x * y)
+    print $ display $ expandVars unknown vars ((y + z) * (x + 3))
+
+    let uninitialized = Var 0
+    let intVars = [("x", 3), ("y", 4)]
+    print $ eval (expandVars uninitialized intVars ((y + z) * (x + 3)))
