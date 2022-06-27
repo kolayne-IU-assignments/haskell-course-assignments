@@ -1,6 +1,10 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# LANGUAGE InstanceSigs #-}
 
+
+-- ============ NOT EXTRA =============
+
+
 data Mean a = Mean { len :: Int, getMean :: a }
             deriving Show
 
@@ -65,5 +69,95 @@ variance guys@(_:_:_:[]) = naiveVariance guys
 variance (a:b:rest) = naiveVariance [a, b] <> variance rest
 
 
+-- ============ EXTRA =============
+
+-- | A half-closed interval '[from; to)' for values of type `t`.
+--
+-- Invariant: `from <= to`. If `from == to`, the interval is
+-- considered empty.
+data Interval t = Interval
+                { from :: t  -- ^ Start of an interval.
+                , to   :: t  -- ^ End of an interval.
+                }
+
+instance Show t => Show (Interval t) where
+    show i = "[" ++ show (from i) ++ "; " ++ show (to i) ++ ")"
+
+-- | A set of non-overlapping intervals.
+--
+-- The invariants for this representation are:
+--
+-- * the intervals are sorted according to from;
+-- * the intervals do not overlap (even at a single point).
+newtype IntervalSet t = IntervalSet [Interval t]
+    deriving Show
+
+-- | Convert an interval set into a list of pairs representing each interval.
+fromIntervalSet :: IntervalSet t -> [(t, t)]
+fromIntervalSet (IntervalSet intervals) = map (\i -> (from i, to i)) intervals
+
+-- | Unsafely construct an interval set from a list of pairs.
+-- Input list must be ordered by the first component; intervals represented
+-- by '[from; to)' must not overlap at any points.
+unsafeIntervalSet :: [(t, t)] -> IntervalSet t
+unsafeIntervalSet almostIntervals = IntervalSet (map (\(f, t) -> Interval f t) almostIntervals)
+
+-- | Removes empty intervals and merges coinciding intervals to create a more compact
+-- | representation of the same set of intervals.
+beautify :: Eq t => IntervalSet t -> IntervalSet t
+beautify (IntervalSet intervals) = IntervalSet (beautifyL (filter isNotEmpty intervals))
+    where
+        isNotEmpty (Interval f t) = f /= t
+        beautifyL (i1:i2:rest) =
+            if to i1 == from i2 then
+                beautifyL ((Interval (from i1) (to i2)) : rest)
+            else
+                i1 : beautifyL (i2:rest)
+        beautifyL is = is  -- One or zero intervals
+
+-- | An invariant-preserving union of two interval sets.
+union :: Ord t => IntervalSet t -> IntervalSet t -> IntervalSet t
+union (IntervalSet s1) (IntervalSet s2) = beautify $ IntervalSet (unionL s1 s2)
+    where
+        unionL [] is = is
+        unionL is [] = is
+        unionL ((Interval f1 t1):i1s) ((Interval f2 t2):i2s) = includeNow : unionL newi1s newi2s
+            where
+                leftMostF  = min f1 f2
+                leftMostT  = min t1 t2
+                nextF      = max (max f1 f2) leftMostT
+                rightMostT = max t1 t2
+
+                includeNow   = Interval leftMostF leftMostT
+                includeLater = Interval nextF rightMostT
+
+                (newi1s, newi2s) =
+                    if rightMostT == t1 then
+                        (includeLater:i1s, i2s)
+                    else
+                        (i1s, includeLater:i2s)
+
+instance Ord t => Semigroup (IntervalSet t) where
+    (<>) = union
+
+instance Ord t => Monoid (IntervalSet t) where
+    mempty = IntervalSet []
+
+intervalSet :: Ord t => [(t, t)] -> IntervalSet t
+intervalSet = mconcat . map (makeIntervalSet . makeValid)
+    where
+        -- IMHO, it's a pretty strange feature. I would consider intervals with `from <= to`
+        -- property violated as empty and filter them out.
+        makeValid (f, t) = (min f t, max f t)
+
+        makeIntervalSet (from, to) = IntervalSet [Interval from to]
+
+-- ============ MAIN =============
+
+i1 = unsafeIntervalSet [(1, 4), (6, 9)]
+i2 = unsafeIntervalSet [(2, 5), (7, 8)]
+
 main :: IO ()
-main = print $ variance [1.0, 3, 5]
+main = do
+    print $ fromIntervalSet (i1 `union` i2)
+    print $ fromIntervalSet (intervalSet [('a', 'k'), ('A', 'Z'), ('z', 'j')])
