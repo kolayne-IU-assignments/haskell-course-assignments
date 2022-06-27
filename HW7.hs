@@ -26,15 +26,44 @@ makeMean :: a -> Mean a
 makeMean = Mean 1
 
 -- | Calculate the mean of a list with the `Mean` monoid
---
--- >>> mmean [2, 7, 9]
--- 6.0
--- >>> mmean [4, 3]
--- 3.5
--- >>> mmean (replicate 100 1e308)
--- 1.0e308
-mmean :: Fractional a => [a] -> a
-mmean = getMean . mconcat . map makeMean
+mean :: Fractional a => [a] -> Mean a
+mean = mconcat . map makeMean
+
+-- | Intermediate results for count, mean and variance.
+data Variance a = Variance Int (Mean a) a
+                deriving Show
+
+instance Fractional a => Semigroup (Variance a) where
+    (<>) :: Variance a -> Variance a -> Variance a
+    (Variance 0 _ _ ) <> v2 = v2
+    v1 <> (Variance 0 _ _) = v1
+    (Variance n1 y1 v1) <> (Variance n2 y2 v2) = Variance (n1+n2) (y1 <> y2) newV
+        where
+            newV = (v1 * (fromIntegral n1 - 1) + v2 * (fromIntegral n2 - 1)
+                    + delta^2 * fromIntegral (n1*n2) / fromIntegral (n1+n2))
+                 / fromIntegral (n1 + n2 - 1)
+            delta = getMean y2 - getMean y1
+
+instance Fractional a => Monoid (Variance a) where
+    mempty = Variance 0 mempty 0
+
+naiveVariance :: Fractional a => [a] -> Variance a
+naiveVariance seq = Variance n (mean seq) ((sum $ map adapt seq) / fromIntegral (n-1))
+    where
+        n = length seq
+        curMean = getMean $ mean seq
+        adapt x = (x - curMean)^2
+
+-- | Compute count, mean and variance for a list of values.
+variance :: Fractional a => [a] -> Variance a
+variance [] = mempty
+variance [_] = undefined  -- ??? What's the variance of a singleton set?
+    -- If exactly three elements are left, we can't take the first pair
+    -- because then there is nothing we could do with the last element.
+variance guys@(_:_:_:[]) = naiveVariance guys
+    -- Otherwise we take the first pair and do the thing with the rest
+variance (a:b:rest) = naiveVariance [a, b] <> variance rest
+
 
 main :: IO ()
-main = print $ mmean [2, 7, 9]
+main = print $ variance [1.0, 3, 5]
